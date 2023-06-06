@@ -11,14 +11,17 @@
   </style>
 </head>
 <body>
+  <br><br>
   <select id="empresa" name="empresa">
     {% for empresa in empresas %}
       <option value="{{ empresa.vincular_instagram }}">{{ empresa.vincular_instagram }}</option>
     {% endfor %}
   </select>
   <br>
-
+  <br>
   <button id="filtrar-posts" onclick="getPosts()">Filtrar Posts</button>
+  <button id="analisar-posts" onclick="return confirm('O processo de análise de posts pode demorar um pouco e integra diretamente com o ChatGPT-4 por meio de API. Você deseja continuar?') && analisarPosts()">Analisar Posts</button>
+
 
   <table>
     <thead>
@@ -59,44 +62,54 @@
     function getPosts() {
       var empresa = document.getElementById('empresa').value;
       
-      console.log(empresa)
       fetch('/api/posts?empresa=' + empresa)
           .then(response => response.json())
           .then(data => populateTable(data));
+          
   }
 
-    function populateTable(data) {
-        var tbody = document.getElementById('post-table-body');
-        tbody.innerHTML = '';
-    
-        for (var i = 0; i < data.length; i++) {
-            var tr = document.createElement('tr');
-            
-            var fields = ['timestamp', 'caption', 'like_count', 'comments_count', 'reach', 'percentage', 'media_product_type', 'plays', 'saved', 'nome_empresa'];
-            for (var j = 0; j < fields.length; j++) {
-                var td = document.createElement('td');
-                td.textContent = data[i][fields[j]];
-                tr.appendChild(td);
-            }
-            
-            var td = document.createElement('td');
-            var updateButton = document.createElement('button');
-            var deleteButton = document.createElement('button');
-            updateButton.textContent = 'Atualizar';
-            deleteButton.textContent = 'Deletar';
-            updateButton.classList.add('btn', 'btn-primary');
-            deleteButton.classList.add('btn', 'btn-danger');
+  function analisarPosts() {
+    var empresa = document.getElementById('empresa').value;
+    fetch('/api/analise_posts?empresa=' + empresa)
+        .then(response => response.json())
+        .then(data => {
+            // Armazena a análise no localStorage para que possa ser acessada na próxima página
+            localStorage.setItem('analise', JSON.stringify(data));
+            // Navega para a página de visualização de análises
+            window.location.href = '/visualizar_analises';
+        });
+  }
+  
 
-            updateButton.onclick = function(id) { window.location.href = '/atualizar_post?id=' + id; }.bind(null, data[i]['id']);
-            deleteButton.onclick = function(id) { window.location.href = '/deletar_post?id=' + id; }.bind(null, data[i]['id']);
+  function populateTable(data) {
+    var tbody = document.getElementById('post-table-body');
+    tbody.innerHTML = '';
 
-            td.appendChild(updateButton);
-            td.appendChild(deleteButton);
-            tr.appendChild(td);
-            
-            tbody.appendChild(tr);
+    // Cria um mapa para armazenar os IDs dos posts já adicionados
+    var addedPostIds = {};
+
+    for (var i = 0; i < data.length; i++) {
+        // Se o ID do post já foi adicionado, pular para o próximo
+        if (addedPostIds[data[i].id]) {
+            continue;
         }
+
+        var tr = document.createElement('tr');
+        
+        var fields = ['timestamp', 'caption', 'like_count', 'comments_count', 'reach', 'percentage', 'media_product_type', 'plays', 'saved', 'nome_empresa'];
+        for (var j = 0; j < fields.length; j++) {
+            var td = document.createElement('td');
+            td.textContent = data[i][fields[j]];
+            tr.appendChild(td);
+        }
+
+        // Adicionar a linha ao corpo da tabela
+        tbody.appendChild(tr);
+
+        // Marcar o ID do post como adicionado
+        addedPostIds[data[i].id] = true;
     }
+}
   </script>
 
 {% endblock %}

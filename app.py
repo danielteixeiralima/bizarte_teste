@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash
-from models import db, Empresa, Resposta, Usuario, OKR, KR, PostInstagram
+from models import db, Empresa, Resposta, Usuario, OKR, KR, PostsInstagram
 import requests
 import json
 import time
@@ -8,6 +8,18 @@ from flask_migrate import Migrate
 from flask import jsonify
 import pandas as pd
 import traceback
+from flask import current_app
+from sqlalchemy import inspect
+from sqlalchemy import desc
+import tkinter as tk
+from tkinter import filedialog
+import sqlite3
+import pandas as pd
+import requests
+import json
+from datetime import datetime, timedelta
+import dateparser
+
 
 
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -23,7 +35,7 @@ db.init_app(app)
 
 @app.route('/')
 def home():
-    return render_template('home.html')
+    return render_template('index.html')
 
 @app.route('/empresas', methods=['GET'])
 def listar_empresas():
@@ -54,7 +66,7 @@ def cadastrar_empresa():
 def cadastrar_post():
         empresas = Empresa.query.filter(Empresa.vincular_instagram.isnot(None)).all()
 
-        posts = PostInstagram(
+        posts = PostsInstagram(
             timestamp=request.form.get('timestamp'),
             caption=request.form.get('caption'),
             like_count=request.form.get('like_count'),
@@ -63,7 +75,8 @@ def cadastrar_post():
             percentage=request.form.get('percentage'),
             media_product_type=request.form.get('media_product_type'),
             plays = request.form.get('plays'),
-            saved=request.form.get('saved')
+            saved=request.form.get('saved'),
+            nome_empresa=request.form.get('nome_empresa')
         )
         db.session.add(posts)
         db.session.commit()
@@ -72,21 +85,51 @@ def cadastrar_post():
 @app.route('/api/posts', methods=['GET'])
 def api_posts():
     empresa_selecionada = request.args.get('empresa')
-
     if empresa_selecionada:
-        posts = PostInstagram.query.filter(PostInstagram.nome_empresa == empresa_selecionada).all()
+        posts = PostsInstagram.query.filter(PostsInstagram.nome_empresa == empresa_selecionada).order_by(desc(PostsInstagram.timestamp)).all()
     else:
-        posts = PostInstagram.query.all()
+        posts = PostsInstagram.query.order_by(desc(PostsInstagram.timestamp)).all()
 
     posts = [post.to_dict() for post in posts]  # Convert each post to a dictionary
     return jsonify(posts)
 
+@app.route('/api/analise_posts')
+def api_analise_posts():
+    empresa = request.args.get('empresa')
+    analise = analise_post_instagram(empresa)
+    print(analise)
+    return jsonify(analise)
+
+
+
+@app.route('/verificar_post_existente', methods=['POST'])
+def verificar_post_existente():
+    data = request.get_json()
+    id = data.get('id')
+    if not id:
+        return jsonify({'error': 'id não fornecido'}), 400
+
+    post = PostsInstagram.query.filter_by(id=id).first()
+    if post is None:
+        return jsonify({'exists': False})
+    else:
+        return jsonify({'exists': True})
+    
+@app.route('/delete_all_posts', methods=['POST'])
+def delete_all_posts():
+    try:
+        num_rows_deleted = db.session.query(PostsInstagram).delete()
+        db.session.commit()
+        print(f"{num_rows_deleted} rows deleted.")
+    except Exception as e:
+        db.session.rollback()
+        print("Error occurred, rollbacked.")
+        print(e)
+        
 @app.route('/listar/posts', methods=['GET'])
 def listar_posts():
     empresas = Empresa.query.filter(Empresa.vincular_instagram.isnot(None)).all()
-    
-    posts = PostInstagram.query.all()
-    print(posts)
+    posts = PostsInstagram.query.filter(PostsInstagram.timestamp.isnot(None)).all()
     return render_template('listar_posts.html', posts=posts, empresas=empresas)
 
 @app.route('/atualizar/empresa/<int:id>', methods=['GET', 'POST'])
@@ -202,7 +245,8 @@ def planejamento_redes():
 def analise_posts():
     try:
         if request.method == 'POST':
-            posts = PostInstagram(
+            posts = PostsInstagram(
+                id=request.form.get('id'),
                 id_empresa=request.form.get('id_empresa'),
                 timestamp=request.form.get('timestamp'),
                 caption=request.form.get('caption'),
@@ -220,16 +264,33 @@ def analise_posts():
     except Exception as e:
         print("Exceção ocorreu: ", e)
         traceback.print_exc()
-        return jsonify({'message': 'Dados inseridos com falha meno!'}), 201
+        return jsonify({'message': 'Dados inseridos com falha!'}), 201
+        
 
     empresas = Empresa.query.filter(Empresa.vincular_instagram.isnot(None)).all()
 
     return render_template('analise_posts.html', empresas=empresas)
 
 
+
+
+   
+
+def get_last_15_days_posts(empresa):
+    # Substitua esta lógica pelo código necessário para obter os posts dos últimos 15 dias
+    posts = PostsInstagram.query.filter(PostsInstagram.nome_empresa == empresa).order_by(PostsInstagram.timestamp.desc()).limit(15).all()
+
+    print(posts)
+    # Converter os objetos Post em dicionários
+    posts_dict = [post.to_dict() for post in posts]
+
+    return posts_dict
+
+
+
 @app.route('/deletar_posts/<int:id>', methods=['POST'])
 def deletar_posts(id):
-    post = PostInstagram.query.get_or_404(id)
+    post = PostsInstagram.query.get_or_404(id)
     db.session.delete(post)
     db.session.commit()
     return redirect(url_for('listar_posts'))
@@ -301,11 +362,12 @@ def perguntar_gpt(pergunta, pergunta_id, messages):
     url = "https://api.openai.com/v1/chat/completions"
     headers = {
         "Content-Type": "application/json",
-        "Authorization": "Bearer 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"
+        "Authorization": ""
     }
 
     # Adiciona a pergunta atual
-    messages.append({"role": "user", "content": pergunta})
+    messages.append({"role": "user", "content": str(pergunta)})
+
 
     data = {
         "model": "gpt-4",
@@ -317,12 +379,11 @@ def perguntar_gpt(pergunta, pergunta_id, messages):
         try:
             response = requests.post(url, headers=headers, data=json.dumps(data))
             response.raise_for_status()
-
             # Adiciona a resposta do modelo à lista de mensagens
             messages.append({"role": "assistant", "content": response.json()['choices'][0]['message']['content']})
-
             return response.json()['choices'][0]['message']['content'], messages
         except requests.exceptions.HTTPError as e:
+            print(e)
             if e.response.status_code in (429, 520):  # Limite de requisições atingido ou erro de servidor
                 print(f"Erro {e.response.status_code} atingido. Aguardando antes de tentar novamente...")
                 time.sleep(backoff_time)  # Aguarda antes de tentar novamente
@@ -354,6 +415,12 @@ def visualizar_planejamento_atual(id_empresa):
 
     return render_template('visualizar_planejamento.html', respostas=respostas)
 
+
+@app.route('/visualizar_analises', methods=['GET'])
+def visualizar_analises():
+    nome_empresa = request.args.get('empresa')
+    analise = analise_post_instagram(nome_empresa)
+    return render_template('visualizar_analises.html', analise=analise)
 
 @app.route('/cadastrar/okr', methods=['GET', 'POST'])
 def cadastrar_okr():
@@ -391,6 +458,45 @@ def atualizar_okr(id):
         db.session.commit()
         return redirect(url_for('listar_okrs'))
     return render_template('atualizar_okr.html', okr=okr, empresas=empresas)
+
+
+
+
+def analise_post_instagram(nome_empresa):
+    print('Análise de Post Instagram')
+
+    # Obter os posts dos últimos 15 dias
+    posts = get_last_15_days_posts(nome_empresa)
+    if not posts:
+        print('Posts não encontrados.')
+        return
+
+    print(f"Posts para a empresa de ID: {nome_empresa}")
+
+    todos_posts_str = ""
+    for i, post in enumerate(posts, start=1):
+        todos_posts_str += f"Legenda: {post['caption']}\n"
+        todos_posts_str += f"Data de criação: {post['timestamp']}\n"
+        todos_posts_str += f"Número de likes: {post['like_count']}\n"
+        todos_posts_str += f"Número de comentários: {post['comments_count']}\n"
+        todos_posts_str += f"Alcance: {post['reach']}\n"
+        todos_posts_str += f"Engajamento: {post['percentage']}\n"
+        todos_posts_str += f"Tipo de mídia: {post['media_product_type']}\n"
+        todos_posts_str += f"Número de reproduções (reels): {post['plays']}\n"
+        todos_posts_str += f"Número de salvos: {post['saved']}\n"
+        todos_posts_str += f"Nome da empresa: {post['nome_empresa']}\n"
+
+    pergunta = [
+        {"role": "system", "content": "Você está conversando com um assistente de IA. Como posso ajudá-lo?"},
+        {"role": "user", "content": f"Aqui estão todos os posts dos últimos 15 dias:{todos_posts_str}\nPreciso que você analise de acordo com o engajamento e Audiencia esses posts e me diga: 1 - os 3 posts com melhores resultados, a data e porquê 2 - os 3 posts com piores resultados, a data e porquê. 3 - insights do mês (o que temos que melhorar, o que fizemos bem)"}
+    ]  
+    #print(pergunta)
+
+    resposta_gpt, _ = perguntar_gpt(pergunta=pergunta, pergunta_id=1, messages=[])
+    
+    print(resposta_gpt)
+
+    return resposta_gpt
 
 @app.route('/deletar/okr/<int:id>', methods=['POST'])
 def deletar_okr(id):
@@ -478,7 +584,7 @@ def posts_instagram(empresa_id):
 
     pergunta = [{"role": "system", "content": "Você está conversando com um assistente de IA. Como posso ajudá-lo?"},
                 {"role": "user",
-                 "content": f"Aqui estão todos os posts dos últimos 15 dias:{todos_posts_str}\nPreciso que você analise de acordo com o engajamento e Audiencia esses posts e me diga: 1 - os 3 posts com melhores resultados, a data e porquê 2 - os 3 posts com piores resultados, a data e porquê. 4 - insights do mês (o que temos que melhorar, o que fizemos bem)"}]
+                 "content": f"Aqui estão todos os últimos 15 posts:{todos_posts_str}\nPreciso que você analise de acordo com o engajamento e Audiencia esses posts e me diga: 1 - os 3 posts com melhores resultados, a data e porquê 2 - os 3 posts com piores resultados, a data e porquê. 4 - insights do mês (o que temos que melhorar, o que fizemos bem)"}]
 
     resposta_gpt = perguntar_gpt(pergunta)
 

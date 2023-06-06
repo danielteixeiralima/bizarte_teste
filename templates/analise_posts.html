@@ -35,9 +35,9 @@
     {% for empresa in empresas %}
         <option value="{{ empresa.id }}">{{ empresa.vincular_instagram }}</option>
     {% endfor %}
-  </select><br>
+  </select><br><br>
   <button id="buscar_token" onclick="buscaToken()">Gerar Posts</button>
-  <button id="next_posts" onclick="nextPage()">Próximos Posts</button>
+  <!-- <button id="next_posts" onclick="nextPage()">Próximos Posts</button> -->
   <form class="form-style" method="post" onsubmit="event.preventDefault(); sendPostsToServer();">
     <input type="submit" value="Cadastrar">
 </form>
@@ -154,45 +154,66 @@
           
 
         }
-        function sendPostsToServer() {
+        
+        
+
+        async function sendPostsToServer() {
           var listaNomes = JSON.parse(localStorage.getItem('listaNomes'));
           for (var i = 0; i < listaNomes.length; i++) {
               var post = listaNomes[i];
       
-              // Crie um objeto FormData para segurar os dados do post
-              var formData = new FormData();
-              formData.append('id_empresa', post.id_empresa); // Supondo que cada post tem um 'id_empresa'
-              formData.append('timestamp', post.timestamp);
-              formData.append('caption', post.caption);
-              formData.append('like_count', post.like_count);
-              formData.append('comments_count', post.comments_count);
-              formData.append('reach', post.reach);
-              formData.append('percentage', post.percentage);
-              formData.append('media_product_type', post.media_product_type);
-              formData.append('plays', post.plays);
-              formData.append('saved', post.saved);
-              formData.append('nome_empresa', post.nome_empresa); 
-              // Faça a solicitação POST para o servidor
-              fetch('/analise_posts', {
+              // Verifique se o post já existe antes de enviá-lo
+              let res = await fetch('/verificar_post_existente', {
                   method: 'POST',
-                  body: formData
-              }).then(response => {
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ id: post.id })
+              });
+      
+              let jsonRes = await res.json();
+      
+              if (!jsonRes.exists) {
+                  // O post não existe, envie-o ao servidor
+      
+                  // Crie um objeto FormData para segurar os dados do post
+                  var formData = new FormData();
+                  formData.append('id', post.id)
+                  formData.append('id_empresa', post.id_empresa);
+                  formData.append('timestamp', post.timestamp);
+                  formData.append('caption', post.caption);
+                  formData.append('like_count', post.like_count);
+                  formData.append('comments_count', post.comments_count);
+                  formData.append('reach', post.reach);
+                  formData.append('percentage', post.percentage);
+                  formData.append('media_product_type', post.media_product_type);
+                  formData.append('plays', post.plays);
+                  formData.append('saved', post.saved);
+                  formData.append('nome_empresa', post.nome_empresa);
+      
+                  // Faça a solicitação POST para o servidor
+                  let response = await fetch('/analise_posts', {
+                      method: 'POST',
+                      body: formData
+                  });
+      
                   if (response.ok) {
                       console.log('Post enviado com sucesso para o servidor');
                       console.log(response)
                   } else {
-                    console.log('Erro ao enviar o post para o servidor:', response.status, response.statusText);                  }
-              }).catch(error => {
-                  console.log('Erro ao enviar o post para o servidor:', error);
-              });
+                      console.log('Erro ao enviar o post para o servidor:', response.status, response.statusText);                  
+                  }
+              } else {
+                  console.log(`Post com id ${post.id} já existe.`);
+              }
           }
       }
+
+      
 
         statusChangeCallback(response).then(() => {
           buscaToken();
         });
         async function buscaToken(){
-
+          
           clearTable()
           listaNomes = JSON.parse(localStorage.getItem('listaNomes'));
           listaNomes = []
@@ -213,10 +234,7 @@
           localStorage.setItem('impressao', JSON.stringify(impressao));
           var impressao = JSON.parse(localStorage.getItem('impressao'));
           //console.log(token)
-          
-          
-          
-        
+
         }
     
         function listaTokens() {
@@ -274,64 +292,71 @@
               localStorage.setItem('nome', JSON.stringify(nome));
               var nome = JSON.parse(localStorage.getItem('nome'));
 
-              var reach = await alcance();
-              localStorage.setItem('reach', JSON.stringify(reach));
-              var reach = JSON.parse(localStorage.getItem('reach'));
+           
             });
           });
         }
 
-        function nomes() {
-          return new Promise((resolve, reject) => {
-              var idsPost = JSON.parse(localStorage.getItem('idsPost'));
-              var promises = [];
-              for (var i = 0; i < idsPost.length; i++) {
-                  var postPromise = new Promise((resolve, reject) => {
-                      var postID = idsPost[i];
-                      Promise.all([
-                          new Promise((resolve, reject) => {
-                              FB.api(postID+'?fields=caption,timestamp,like_count,comments_count,media_product_type&access_token=' + token, resolve);
-                          }),
-                          new Promise((resolve, reject) => {
-                              FB.api(postID+'/insights/reach,saved', resolve);
-                          }),
-                          new Promise((resolve, reject) => {
-                              FB.api(postID+'/insights/plays', resolve);
-                          }),
-                      ]).then((responses) => {
-                          var postDetails = responses[0];
-                          var reachDetails = parseInt(responses[1].data[0].values[0].value);
-                          var save = parseInt(responses[1].data[1].values[0].value);
-                          var play = 0;
-                          if(postDetails.media_product_type == 'REELS'){
-                              play = parseInt(responses[2].data[0].values[0].value);
-                          }
-                          
-                          var percentage = 0;
-                          if(reachDetails != 0){
-                              percentage = parseFloat(((postDetails.like_count + postDetails.comments_count) / reachDetails) * 100).toFixed(2);
-                          }
-      
-                          // Converting timestamp to ISO string
-                          postDetails.timestamp = new Date(postDetails.timestamp).toISOString();
-      
-                          // Combine the post details and reach details into a single object
-                          var combinedDetails = {...postDetails, reach: reachDetails, percentage: percentage, plays: play, saved: save, nome_empresa: nome_empresa};
-                          resolve(combinedDetails);
-                      }).catch(reject);
-                  });
-                  promises.push(postPromise);
-              }
-              
-              Promise.all(promises).then((listaNomes) => {
-                  // Ordena a lista de nomes por data de criação, do mais recente ao mais antigo
-                  listaNomes.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-                  localStorage.setItem('listaNomes', JSON.stringify(listaNomes));
-                  populateTable();
-                  resolve();
-              }).catch(reject);
-          });
-      }
+
+
+      function nomes() {
+        return new Promise((resolve, reject) => {
+            var idsPost = JSON.parse(localStorage.getItem('idsPost'));
+            var promises = [];
+            for (var i = 0; i < idsPost.length; i++) {
+                var postPromise = new Promise((resolve, reject) => {
+                    var postID = idsPost[i];
+                    
+                      
+                            Promise.all([
+                                new Promise((resolve, reject) => {
+                                    FB.api(postID+'?fields=caption,timestamp,like_count,comments_count,media_product_type&access_token=' + token, resolve);
+                                }),
+                                new Promise((resolve, reject) => {
+                                    FB.api(postID+'/insights/reach,saved', resolve);
+                                }),
+                                new Promise((resolve, reject) => {
+                                    FB.api(postID+'/insights/plays', resolve);
+                                }),
+                            ]).then((responses) => {
+                                var postDetails = responses[0];
+                                var reachDetails = parseInt(responses[1].data[0].values[0].value);
+                                var save = parseInt(responses[1].data[1].values[0].value);
+                                var play = 0;
+                                if(postDetails.media_product_type == 'REELS'){
+                                    play = parseInt(responses[2].data[0].values[0].value);
+                                }
+
+                                var idIG = JSON.parse(localStorage.getItem('idIG'));
+
+                                
+                                var percentage = 0;
+                                if(reachDetails != 0){
+                                    percentage = parseFloat(((postDetails.like_count + postDetails.comments_count) / reachDetails) * 100).toFixed(2);
+                                }
+            
+                                postDetails.timestamp = new Date(postDetails.timestamp).toISOString();
+            
+                                var combinedDetails = {...postDetails, id: postID, reach: reachDetails,id_empresa: idIG, percentage: percentage, plays: play, saved: save, nome_empresa: nome_empresa};
+                                resolve(combinedDetails);
+                            }).catch(reject);
+                        
+                    
+                });
+                promises.push(postPromise);
+            }
+            
+            Promise.all(promises).then((listaNomes) => {
+                listaNomes = listaNomes.filter(function(n){ return n !== null });
+                listaNomes.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                localStorage.setItem('listaNomes', JSON.stringify(listaNomes));
+                populateTable();
+                resolve();
+            }).catch(reject);
+        });
+    }
+
+
     
 
   function impressoes() {
