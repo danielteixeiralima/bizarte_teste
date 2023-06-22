@@ -508,7 +508,7 @@ def perguntar_gpt(pergunta, pergunta_id, messages):
     url = "https://api.openai.com/v1/chat/completions"
     headers = {
         "Content-Type": "application/json",
-        "Authorization": "Bearer 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"
+        "Authorization": "Bearer " + os.getenv("OPENAI_API_KEY")
     }
 
     # Adiciona a pergunta atual
@@ -518,6 +518,7 @@ def perguntar_gpt(pergunta, pergunta_id, messages):
         "model": "gpt-4",
         "messages": messages
     }
+
     backoff_time = 1  # Começamos com um tempo de espera de 1 segundo
     while True:
         try:
@@ -525,7 +526,6 @@ def perguntar_gpt(pergunta, pergunta_id, messages):
             response.raise_for_status()
 
             # Adiciona a resposta do modelo à lista de mensagens
-            
             messages.append({"role": "assistant", "content": response.json()['choices'][0]['message']['content']})
 
             return response.json()['choices'][0]['message']['content'], messages
@@ -536,7 +536,6 @@ def perguntar_gpt(pergunta, pergunta_id, messages):
                 backoff_time *= 2  # Aumenta o tempo de espera
             else:
                 raise
-
 
 
 
