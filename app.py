@@ -508,17 +508,16 @@ def perguntar_gpt(pergunta, pergunta_id, messages):
     url = "https://api.openai.com/v1/chat/completions"
     headers = {
         "Content-Type": "application/json",
-        "Authorization": "Bearer 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"
+        "Authorization": "Bearer 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"
     }
 
     # Adiciona a pergunta atual
-    messages.append({"role": "user", "content": str(pergunta)})
+    messages.append({"role": "user", "content": pergunta})
 
     data = {
         "model": "gpt-4",
         "messages": messages
     }
-
     backoff_time = 1  # Começamos com um tempo de espera de 1 segundo
     while True:
         try:
@@ -526,11 +525,10 @@ def perguntar_gpt(pergunta, pergunta_id, messages):
             response.raise_for_status()
 
             # Adiciona a resposta do modelo à lista de mensagens
-            messages = []
-            messages.append({"role": "assistant", "content": response.json()['choices'][0]['message']['content']
-            })
+            
+            messages.append({"role": "assistant", "content": response.json()['choices'][0]['message']['content']})
 
-            return response.json()['choices'][0]['message']['content']
+            return response.json()['choices'][0]['message']['content'], messages
         except requests.exceptions.HTTPError as e:
             if e.response.status_code in (429, 520, 502, 503):  # Limite de requisições atingido ou erro de servidor
                 print(f"Erro {e.response.status_code} atingido. Aguardando antes de tentar novamente...")
@@ -619,7 +617,6 @@ def analise_post_instagram(nome_empresa):
     if not posts:
         print('Posts não encontrados.')
         return
-
     #print(f"Posts para a empresa de ID: {nome_empresa}")
 
     todos_posts_str = ""
@@ -635,10 +632,8 @@ def analise_post_instagram(nome_empresa):
         todos_posts_str += f"Número de salvos: {post['saved']}\n"
         todos_posts_str += f"Nome da empresa: {post['nome_empresa']}\n"
 
-    pergunta = [
-        {"role": "system", "content": "Você está conversando com um assistente de IA. Como posso ajudá-lo?"},
-        {"role": "user", "content": f"Aqui estão todos os posts dos últimos 15 dias:{todos_posts_str}\nPreciso que você analise de acordo com o engajamento e Audiencia esses posts e me diga: 1 - os 3 posts com melhores resultados, a data e porquê 2 - os 3 posts com piores resultados, a data e porquê. 3 - insights do mês (o que temos que melhorar, o que fizemos bem)"}
-    ]  
+    pergunta = f"Aqui estão todos os posts dos últimos 15 dias:{todos_posts_str}\nPreciso que você analise de acordo com o engajamento e Audiencia esses posts e me diga: 1 - os 3 posts com melhores resultados, a data e porquê 2 - os 3 posts com piores resultados, a data e porquê. 3 - insights do mês (o que temos que melhorar, o que fizemos bem)"
+      
     #print(pergunta)
 
     resposta_gpt = perguntar_gpt(pergunta=pergunta, pergunta_id=1, messages=[])

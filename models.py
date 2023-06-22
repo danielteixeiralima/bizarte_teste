@@ -133,7 +133,7 @@ class PostsInstagram(db.Model):
 
 class AnaliseInstagram(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    data_criacao = db.Column(db.String(64))
+    data_criacao = db.Column(db.String(64)) 
     analise = db.Column(db.Text)
     nome_empresa = db.Column(db.String(64))
 

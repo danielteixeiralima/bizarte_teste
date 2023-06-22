@@ -61,11 +61,10 @@
 
     function getPosts() {
       var empresa = document.getElementById('empresa').value;
-      
+  
       fetch('/api/posts?empresa=' + empresa)
           .then(response => response.json())
           .then(data => populateTable(data));
-          
   }
 
   async function saveAnaliseToServer() {

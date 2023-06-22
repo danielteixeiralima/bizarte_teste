@@ -139,24 +139,17 @@
                     listaEmpresaToken.push([empresa[i].name, tokens[i].access_token]);
                     empresas.push([empresa[i].name, tokens[i].access_token])
                     ids.push(empresa[i])
-                    
                 }
             }
-            
             else {
                 console.log("Erro: os arrays empresa e tokens têm tamanhos diferentes");
             }
             //console.log(ids)
             //console.log(listaEmpresaToken)
             return empresas
-            
           }
-          
 
         }
-        
-        
-
         async function sendPostsToServer() {
           var listaNomes = JSON.parse(localStorage.getItem('listaNomes'));
           for (var i = 0; i < listaNomes.length; i++) {
@@ -207,13 +200,10 @@
           }
       }
 
-      
-
         statusChangeCallback(response).then(() => {
           buscaToken();
         });
         async function buscaToken(){
-          
           clearTable()
           listaNomes = JSON.parse(localStorage.getItem('listaNomes'));
           listaNomes = []
@@ -226,7 +216,6 @@
               token = empresas[i][1]
               id = ids[i].id
             }
-            
           }
           //console.log(id)
 
